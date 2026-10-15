@@ -23,11 +23,32 @@ done
 [[ $EUID == 0 && $(uname -s) == Linux ]] || { echo 'Linux root installation required' >&2; exit 1; }
 [[ $panel =~ ^https://[a-zA-Z0-9.-]+(:[0-9]+)?/?$ && $machine_id =~ ^[1-9][0-9]*$ ]] || { usage >&2; exit 2; }
 [[ $version == latest || $version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release version' >&2; exit 2; }
-for command in curl jq unzip sha256sum install systemctl useradd runuser; do
+for command in curl jq unzip sha256sum install; do
   command -v "$command" >/dev/null || { echo "Missing dependency: $command" >&2; exit 1; }
 done
-[[ -d /run/systemd/system ]] || { echo 'systemd is required' >&2; exit 1; }
-for path in /usr/local/ravel-gost /etc/ravel-gost /var/lib/ravel-gost /etc/systemd/system/ravel-gost.service; do
+if [[ -d /run/systemd/system ]]; then
+  init=systemd
+  commands=(systemctl useradd runuser)
+  service_path=/etc/systemd/system/ravel-gost.service
+elif command -v rc-service >/dev/null && command -v supervise-daemon >/dev/null; then
+  init=openrc
+  commands=(rc-service rc-update adduser addgroup su)
+  service_path=/etc/init.d/ravel-gost
+else
+  echo 'systemd or OpenRC with supervise-daemon is required' >&2
+  exit 1
+fi
+for command in "${commands[@]}"; do
+  command -v "$command" >/dev/null || { echo "Missing dependency: $command" >&2; exit 1; }
+done
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ $init == systemd ]]; then
+  service_source=$script_dir/packaging/ravel-gost.service
+else
+  service_source=$script_dir/packaging/ravel-gost.openrc
+fi
+[[ -f $service_source ]] || { echo 'Service definition missing from installation bundle' >&2; exit 1; }
+for path in /usr/local/ravel-gost /etc/ravel-gost /var/lib/ravel-gost "$service_path"; do
   [[ ! -e $path && ! -L $path ]] || { echo "Existing installation path: $path; refusing to overwrite" >&2; exit 1; }
 done
 if id ravel-gost &>/dev/null; then
@@ -67,16 +88,29 @@ chmod 0755 "$stage/ravel" "$stage/gost"
 printf '%s' "$token" | jq -Rs --arg panel "$panel" --argjson id "$machine_id" \
   '{panel_url:$panel,machine_id:$id,machine_token:.,protocol:"ravel-v1",sync_interval:30,status_interval:120}' >"$stage/state.json"
 unset token
-useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin ravel-gost
+if [[ $init == systemd ]]; then
+  useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin ravel-gost
+else
+  addgroup -S ravel-gost
+  adduser -S -D -H -h /nonexistent -s /sbin/nologin -G ravel-gost ravel-gost
+fi
 install -d -o ravel-gost -g ravel-gost -m 0750 /usr/local/ravel-gost /var/lib/ravel-gost
 install -d -o root -g ravel-gost -m 0750 /etc/ravel-gost
 install -o ravel-gost -g ravel-gost -m 0750 "$stage/ravel" /usr/local/ravel-gost/ravel
 install -o root -g root -m 0755 "$stage/gost" /usr/local/ravel-gost/gost
 install -o root -g ravel-gost -m 0640 "$stage/state.json" /etc/ravel-gost/state.json
-runuser -u ravel-gost -- /usr/local/ravel-gost/ravel version
-runuser -u ravel-gost -- /usr/local/ravel-gost/gost -V
-script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-install -o root -g root -m 0644 "$script_dir/packaging/ravel-gost.service" /etc/systemd/system/ravel-gost.service
-systemctl daemon-reload
-systemctl enable --now ravel-gost.service
-echo "Installed $version. Status: systemctl status ravel-gost.service"
+if [[ $init == systemd ]]; then
+  runuser -u ravel-gost -- /usr/local/ravel-gost/ravel version
+  runuser -u ravel-gost -- /usr/local/ravel-gost/gost -V
+  install -o root -g root -m 0644 "$service_source" "$service_path"
+  systemctl daemon-reload
+  systemctl enable --now ravel-gost.service
+  echo "Installed $version. Status: systemctl status ravel-gost.service"
+else
+  su -s /bin/sh -c '/usr/local/ravel-gost/ravel version && /usr/local/ravel-gost/gost -V' ravel-gost
+  install -o root -g root -m 0755 "$service_source" "$service_path"
+  install -o ravel-gost -g ravel-gost -m 0600 /dev/null /var/log/ravel-gost.log
+  rc-update add ravel-gost default
+  rc-service ravel-gost start
+  echo "Installed $version. Status: rc-service ravel-gost status"
+fi

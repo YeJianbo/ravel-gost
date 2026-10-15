@@ -4,7 +4,7 @@
 
 ## 安装
 
-支持 systemd、Linux amd64 / arm64。需要 `curl`、`jq`、`unzip`、`sha256sum`，以及系统自带的用户管理工具。
+支持 systemd 或 Alpine/OpenRC、Linux amd64 / arm64。需要 `bash`、`curl`、`jq`、`unzip`、`sha256sum`，以及系统自带的用户管理工具。Alpine 可以先执行 `apk add bash curl jq unzip`。
 
 从 [Releases](https://github.com/YeJianbo/ravel-gost/releases) 下载对应架构的 ZIP 与 `.sha256` 文件，校验后解压。查看包内 `install.sh` 和服务文件后执行：
 
@@ -33,11 +33,13 @@ systemctl restart ravel-gost.service
 - 转发缓存及状态：`/var/lib/ravel-gost`。
 - 配置默认每 30 秒同步，状态每 120 秒上报。
 
-程序不提供终端、远程 Shell、系统配置任务或防火墙管理。服务不是 root，仅保留绑定低端口的能力；文件写入限制在程序及数据目录。最多接受 1024 条规则，服务内存上限 512 MiB。转发仍能访问机器网络可达的地址，部署时应使用独立机器、网络分段和出站防火墙限制目标。主机管理员应避免给此用户授予额外权限。
+OpenRC 使用 `rc-service ravel-gost status`、`rc-service ravel-gost restart` 管理服务，日志位于 `/var/log/ravel-gost.log`，需要定期轮转。ICMP 监测需要系统允许普通用户使用 `ping`，否则使用 TCP 探测，不为此提升服务权限。
+
+程序不提供终端、远程 Shell、系统配置任务或防火墙管理。服务不是 root，最多接受 1024 条规则。systemd 服务仅保留绑定低端口的能力，文件写入限制在程序及数据目录，内存上限 512 MiB。OpenRC 仅提供普通用户和文件权限隔离，不等同于 systemd 沙箱，默认仅支持 1024 以上端口；需要进一步隔离时使用专用容器及宿主资源限制。转发仍能访问机器网络可达的地址，部署时应使用独立机器、网络分段和出站防火墙限制目标。主机管理员应避免给此用户授予额外权限。
 
 ## 更新
 
-面板机器设置中的自动更新开关控制 Ravel 更新检查。程序仅接受本仓库的新正式版本，验证发布包 SHA-256 和程序版本后替换 Ravel，由 systemd 重启。面板不能改变更新源，不能要求降级。
+面板机器设置中的自动更新开关控制 Ravel 更新检查。程序仅接受本仓库的新正式版本，验证发布包 SHA-256 和程序版本后替换 Ravel，由服务管理器重启。面板不能改变更新源，不能要求降级。
 
 GOST 固定为 2.11.2，CI 校验固定上游摘要后打包；Ravel 自动更新不替换 GOST。更换 GOST 需要主机管理员单独审核并维护。发布包摘要校验依赖 GitHub 发布源的可信性，不是独立签名验证。
 

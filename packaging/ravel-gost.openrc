@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+
+description="Ravel GOST forwarding service"
+supervisor="supervise-daemon"
+command="/usr/local/ravel-gost/ravel"
+command_args="run"
+command_user="ravel-gost:ravel-gost"
+pidfile="/run/ravel-gost.pid"
+respawn_delay=10
+respawn_max=5
+respawn_period=60
+rc_ulimit="-n 16384"
+output_log="/var/log/ravel-gost.log"
+error_log="/var/log/ravel-gost.log"
+umask 0077
+
+depend() {
+    need net
+    after firewall
+}

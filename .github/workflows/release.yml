@@ -50,6 +50,7 @@ jobs:
           fi
           CGO_ENABLED=0 GOOS=linux GOARCH="$TARGET_ARCH" go build -trimpath -ldflags "-s -w -X main.version=$version" -o bundle/ravel .
           bash -n install.sh
+          sh -n packaging/ravel-gost.openrc
           sudo install -D -m 0755 bundle/ravel /usr/local/ravel-gost/ravel
           systemd-analyze verify packaging/ravel-gost.service
           if [[ "$TARGET_ARCH" == amd64 ]]; then
@@ -61,7 +62,7 @@ jobs:
           ASSET_ARCH: ${{ matrix.asset_arch }}
         run: |
           cp README.md LICENSE install.sh state.example.json bundle/
-          cp packaging/ravel-gost.service packaging/GOST-LICENSE bundle/packaging/
+          cp packaging/ravel-gost.service packaging/ravel-gost.openrc packaging/GOST-LICENSE bundle/packaging/
           mkdir output
           asset="ravel-gost-linux-${ASSET_ARCH}.zip"
           (cd bundle && zip -r "../output/$asset" .)
