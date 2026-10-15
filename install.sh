@@ -66,7 +66,8 @@ else
   read -r -s -p 'Machine token: ' token </dev/tty
   echo >/dev/tty
 fi
-[[ $token =~ ^[a-zA-Z0-9_-]{16,512}$ ]] || { echo 'Invalid machine token' >&2; exit 2; }
+token=${token%$'\r'}
+[[ ${#token} -ge 16 && ${#token} -le 512 && $token =~ ^[a-zA-Z0-9_-]+$ ]] || { echo 'Invalid machine token' >&2; exit 2; }
 stage=$(mktemp -d)
 trap 'unset token; rm -rf -- "$stage"' EXIT
 curl_options=(--fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300)
