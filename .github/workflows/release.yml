@@ -1,0 +1,94 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            asset_arch: '64'
+            gost_arch: amd64
+            gost_sha256: a83dfd4e2151b174003c09dfae5b03709ca36d42d671039dff8a550bfb5e56a7
+          - goarch: arm64
+            asset_arch: arm64-v8a
+            gost_arch: armv8
+            gost_sha256: ef613686f56b9b8d5c18e810d453e911909a891d9f1410851418a84c966f9d5c
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Download pinned GOST
+        env:
+          GOST_ARCH: ${{ matrix.gost_arch }}
+          GOST_SHA256: ${{ matrix.gost_sha256 }}
+        run: |
+          mkdir -p bundle/packaging
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 180 \
+            "https://github.com/ginuerzh/gost/releases/download/v2.11.2/gost-linux-${GOST_ARCH}-2.11.2.gz" -o gost.gz
+          printf '%s  gost.gz\n' "$GOST_SHA256" | sha256sum -c -
+          gzip -dc gost.gz > bundle/gost
+          chmod 0755 bundle/gost
+      - name: Compile and check
+        env:
+          TARGET_ARCH: ${{ matrix.goarch }}
+        run: |
+          version=dev
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            version="$GITHUB_REF_NAME"
+            [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          fi
+          CGO_ENABLED=0 GOOS=linux GOARCH="$TARGET_ARCH" go build -trimpath -ldflags "-s -w -X main.version=$version" -o bundle/ravel .
+          bash -n install.sh
+          sudo install -D -m 0755 bundle/ravel /usr/local/ravel-gost/ravel
+          systemd-analyze verify packaging/ravel-gost.service
+          if [[ "$TARGET_ARCH" == amd64 ]]; then
+            RAVEL_TEST_GOST="$PWD/bundle/gost" go test ./...
+            bundle/ravel version
+          fi
+      - name: Package
+        env:
+          ASSET_ARCH: ${{ matrix.asset_arch }}
+        run: |
+          cp README.md LICENSE install.sh state.example.json bundle/
+          cp packaging/ravel-gost.service packaging/GOST-LICENSE bundle/packaging/
+          mkdir output
+          asset="ravel-gost-linux-${ASSET_ARCH}.zip"
+          (cd bundle && zip -r "../output/$asset" .)
+          (cd output && sha256sum "$asset" > "$asset.sha256")
+          printf 'SHA2-256= %s\n' "$(sha256sum "output/$asset" | cut -d' ' -f1)" > "output/$asset.dgst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.asset_arch }}
+          path: output/*
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: output
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" output/* --verify-tag \
+            --title "Ravel GOST $RELEASE_TAG" \
+            --notes 'Standalone Linux GOST forwarding and monitoring service. Includes GOST 2.11.2. Dedicated unprivileged systemd service. Ravel automatic updates use this repository only.'

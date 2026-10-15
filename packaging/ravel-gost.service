@@ -1,0 +1,38 @@
+[Unit]
+Description=Ravel GOST forwarding service
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ravel-gost
+Group=ravel-gost
+ExecStart=/usr/local/ravel-gost/ravel run
+Restart=always
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+MemoryMax=512M
+TasksMax=128
+LimitNOFILE=16384
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/usr/local/ravel-gost /var/lib/ravel-gost
+InaccessiblePaths=-/etc/ssh -/etc/ssl/private
+
+[Install]
+WantedBy=multi-user.target

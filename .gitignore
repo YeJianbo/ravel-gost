@@ -1,0 +1,5 @@
+/dist/
+*.exe
+state.json
+*.previous
+*.update-pending.json

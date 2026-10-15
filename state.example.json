@@ -1,0 +1,8 @@
+{
+  "panel_url": "https://panel.example.com",
+  "machine_id": 1,
+  "machine_token": "REPLACE_WITH_MACHINE_TOKEN",
+  "protocol": "ravel-v1",
+  "sync_interval": 30,
+  "status_interval": 120
+}
